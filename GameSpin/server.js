@@ -13,9 +13,7 @@ let users;
 // Connect to MongoDB
 MongoClient.connect(MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-  ssl: true,
-  sslValidate: false
+  socketTimeoutMS: 45000
 })
   .then(client => {
     console.log('Connected to MongoDB');
