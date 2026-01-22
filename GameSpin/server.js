@@ -194,8 +194,11 @@ const server = http.createServer((req, res) => {
           { upsert: true, returnDocument: 'after' }
         )
           .then(result => {
-            console.log('findOneAndUpdate result:', result);
-            if (!result || !result.value) {
+            console.log('findOneAndUpdate result:', JSON.stringify(result));
+            // MongoDB returns the document directly, not in result.value
+            const doc = result.value || result;
+            if (!doc) {
+              console.log('Cooldown active, rejecting spin');
               res.writeHead(429, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Cooldown active' }));
               return;
