@@ -178,34 +178,29 @@ const server = http.createServer((req, res) => {
         const now = Date.now();
         const cooldown = 10 * 60 * 1000;
         
-        // Atomic: check cooldown AND set timestamp in single operation
-        users.findOneAndUpdate(
-          {
-            username: data.username,
-            $or: [
-              { lastSpinTime: { $exists: false } },
-              { lastSpinTime: { $lte: now - cooldown } }
-            ]
-          },
-          {
-            $set: { lastSpinTime: now },
-            $setOnInsert: { username: data.username }
-          },
-          { upsert: true, returnDocument: 'after' }
-        )
-          .then(result => {
-            console.log('findOneAndUpdate result:', JSON.stringify(result));
-            // MongoDB returns the document directly, not in result.value
-            const doc = result.value || result;
-            if (!doc) {
-              console.log('Cooldown active, rejecting spin');
-              res.writeHead(429, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Cooldown active' }));
-              return;
+        // First check if user exists and has active cooldown
+        users.findOne({ username: data.username })
+          .then(existingUser => {
+            if (existingUser && existingUser.lastSpinTime) {
+              const elapsed = now - existingUser.lastSpinTime;
+              if (elapsed < cooldown) {
+                console.log('Cooldown active for', data.username, 'remaining:', cooldown - elapsed);
+                res.writeHead(429, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Cooldown active' }));
+                return;
+              }
             }
-            console.log('Spin accepted for', data.username, 'at', now);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true, spinTime: now }));
+            
+            // Cooldown OK or no previous spin - set timestamp
+            return users.updateOne(
+              { username: data.username },
+              { $set: { lastSpinTime: now, username: data.username } },
+              { upsert: true }
+            ).then(() => {
+              console.log('Spin accepted for', data.username, 'at', now);
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true, spinTime: now }));
+            });
           })
           .catch(err => {
             console.error('Database error:', err);
