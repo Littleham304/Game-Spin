@@ -308,6 +308,7 @@ async function recordSpinOnServer() {
     
     // Store spin time locally as backup
     localStorage.setItem(`lastSpin_${currentUsername}`, Date.now().toString());
+    console.log('Server recorded spin, also stored locally:', Date.now());
     return true;
   } catch (err) {
     console.error('Server spin validation failed, using local storage');
@@ -480,10 +481,8 @@ function draw() {
         }
         
         showGameModal(winner);
-        // Don't start local timer - let server handle it
         document.getElementById('spinBtn').disabled = true;
-        // Check server for actual cooldown time
-        checkSpinCooldown();
+        startCooldownTimer(SPIN_COOLDOWN);
       }
     }
   }
