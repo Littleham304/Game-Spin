@@ -480,8 +480,10 @@ function draw() {
         }
         
         showGameModal(winner);
-        document.getElementById('spinBtn').disabled = true; // Disable for cooldown
-        startCooldownTimer(SPIN_COOLDOWN);
+        // Don't start local timer - let server handle it
+        document.getElementById('spinBtn').disabled = true;
+        // Check server for actual cooldown time
+        checkSpinCooldown();
       }
     }
   }
