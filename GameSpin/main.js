@@ -100,6 +100,7 @@ function checkLocalStorageCooldown() {
 async function checkSpinCooldown() {
   try {
     const response = await fetch(`/api/spin-check?username=${encodeURIComponent(currentUsername)}`);
+    console.log('Spin check response status:', response.status);
     
     if (response.status === 503) {
       // Database not ready, use localStorage fallback
@@ -117,10 +118,13 @@ async function checkSpinCooldown() {
     }
     
     const data = await response.json();
+    console.log('Spin check data:', data);
     
     if (!data.canSpin) {
+      console.log('Cannot spin, starting timer with:', data.remainingMs);
       startCooldownTimer(data.remainingMs);
     } else {
+      console.log('Can spin, enabling button');
       document.getElementById('spinBtn').disabled = false;
       document.getElementById('spinBtn').textContent = 'SPIN';
     }
