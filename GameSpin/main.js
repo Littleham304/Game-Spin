@@ -487,8 +487,13 @@ function draw() {
         }
         
         showGameModal(winner);
-        document.getElementById('spinBtn').disabled = true;
-        startCooldownTimer(SPIN_COOLDOWN);
+
+        // After spin completes, re-sync cooldown from server/localStorage
+        // instead of blindly starting a fresh 10-minute timer.
+        const btn = document.getElementById('spinBtn');
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+        checkSpinCooldown();
       }
     }
   }
