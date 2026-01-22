@@ -210,23 +210,18 @@ function initializeCanvas() {
 
 /* ---------------- SPIN SETUP ---------------- */
 
-function startSpin() {
-  // Prevent spinning if already spinning
+async function startSpin() {
   if (!done) return;
-  
-  if (!games.length) {
-    console.error("No games loaded yet");
+  if (!games.length) return;
+  if (!currentUsername) {
+    alert('Please enter a username first');
     return;
   }
   
-  // Record spin on server first
-  recordSpinOnServer().then(result => {
-    if (!result || !result.success) return; // Server rejected the spin
-    
-    console.log("=== SPIN STARTED ===");
-    
-    // Store the token for confirmation after animation
-    const spinToken = result.token;
+  const success = await recordSpinOnServer();
+  if (!success) return;
+  
+  console.log("=== SPIN STARTED ===");
     
     // pick winner
     const winner = games[Math.floor(Math.random() * games.length)];
@@ -241,39 +236,23 @@ function startSpin() {
     spinTargetIndex = 25;
     reelItems[spinTargetIndex] = winner;
 
-    // Reset state - CRITICAL: must set done to false BEFORE animation starts
-    done = false;
-    pos = 0;
-    stopping = false;
-    speed = 0;
-    
-    // Store token for confirmation after animation
-    window.pendingSpinToken = spinToken;
-    
-    // Target position: where index 25 should be centered
-    targetPos = spinTargetIndex * ITEM_WIDTH() - CENTER_X();
-    console.log("Target position:", targetPos);
-    
-    // Disable spin button
-    document.getElementById('spinBtn').disabled = true;
-
-    // Start animation immediately - don't wait for image preload
-    spinStartTime = Date.now();
-    
-    setTimeout(() => {
-      stopping = true;
-      stopStartTime = Date.now();
-      decelerationStartPos = pos;
-      console.log("=== DECELERATION STARTED ===");
-      console.log("Current pos:", pos, "Need to reach:", targetPos);
-    }, 3500);
-    
-    preloadImages(reelItems).catch(() => {
-      console.warn("Some images failed to load, but continuing animation");
-    });
-    
-    requestAnimationFrame(draw);
-  });
+  done = false;
+  pos = 0;
+  stopping = false;
+  speed = 0;
+  targetPos = spinTargetIndex * ITEM_WIDTH() - CENTER_X();
+  spinStartTime = Date.now();
+  
+  document.getElementById('spinBtn').disabled = true;
+  
+  setTimeout(() => {
+    stopping = true;
+    stopStartTime = Date.now();
+    decelerationStartPos = pos;
+  }, 3500);
+  
+  preloadImages(reelItems).catch(() => {});
+  requestAnimationFrame(draw);
 }
 
 async function recordSpinOnServer() {
@@ -285,24 +264,21 @@ async function recordSpinOnServer() {
     });
     
     if (response.status === 429) {
-      const data = await response.json();
-      const minutes = Math.ceil(data.remainingMs / 60000);
-      alert(`Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before your next spin!`);
-      return false;
-    }
-    
-    if (response.status === 503 || response.status === 500) {
-      alert('Server error. Please try again later.');
+      alert('Please wait before your next spin!');
+      checkSpinCooldown();
       return false;
     }
     
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      alert('Server error. Please try again later.');
+      return false;
     }
     
     const result = await response.json();
-    // Return token - cooldown will be set AFTER animation completes
-    return { success: true, token: result.token };
+    // Server atomically set cooldown - store locally and start timer
+    localStorage.setItem(`lastSpin_${currentUsername}`, result.spinTime.toString());
+    startCooldownTimer(SPIN_COOLDOWN);
+    return true;
   } catch (err) {
     console.error('Server spin validation failed:', err);
     alert('Cannot connect to server. Please check your connection.');
@@ -462,33 +438,6 @@ function draw() {
         }
         
         showGameModal(winner);
-
-        // NOW confirm spin and set cooldown AFTER reward is granted
-        if (window.pendingSpinToken) {
-          const token = window.pendingSpinToken;
-          delete window.pendingSpinToken;
-          
-          fetch('/api/spin-confirm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: currentUsername, token: token })
-          })
-            .then(res => res.json())
-            .then(() => {
-              localStorage.setItem(`lastSpin_${currentUsername}`, token.toString());
-              console.log('Cooldown set after reward, token:', token);
-              startCooldownTimer(SPIN_COOLDOWN);
-            })
-            .catch(err => {
-              console.error('Failed to confirm spin:', err);
-              checkSpinCooldown();
-            });
-        } else {
-          const btn = document.getElementById('spinBtn');
-          btn.disabled = true;
-          btn.textContent = 'Checking...';
-          checkSpinCooldown();
-        }
       }
     }
   }

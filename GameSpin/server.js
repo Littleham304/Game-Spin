@@ -152,7 +152,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // ---- API: Record spin ----
+  // ---- API: Record spin (atomic) ----
   if (pathname === '/api/spin' && req.method === 'POST') {
     let body = '';
     let size = 0;
@@ -178,76 +178,29 @@ const server = http.createServer((req, res) => {
         const now = Date.now();
         const cooldown = 10 * 60 * 1000;
         
-        // Check cooldown WITHOUT setting timestamp yet
-        users.findOne({ username: data.username })
-          .then(user => {
-            if (user && user.lastSpinTime && (now - user.lastSpinTime) < cooldown) {
-              const remaining = cooldown - (now - user.lastSpinTime);
+        // Atomic: check cooldown AND set timestamp in single operation
+        users.findOneAndUpdate(
+          {
+            username: data.username,
+            $or: [
+              { lastSpinTime: { $exists: false } },
+              { lastSpinTime: { $lt: now - cooldown } }
+            ]
+          },
+          {
+            $set: { lastSpinTime: now },
+            $setOnInsert: { username: data.username }
+          },
+          { upsert: true, returnDocument: 'after' }
+        )
+          .then(result => {
+            if (!result) {
               res.writeHead(429, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Cooldown active', remainingMs: remaining }));
+              res.end(JSON.stringify({ error: 'Cooldown active' }));
               return;
             }
-            
-            // Cooldown OK - return token for client to confirm after animation
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true, token: now }));
-          })
-          .catch(err => {
-            console.error('Database error:', err);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Database error' }));
-          });
-      } catch (err) {
-        console.error('JSON parse error:', err);
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid JSON' }));
-      }
-    });
-    return;
-  }
-  
-  // ---- API: Confirm spin (set cooldown after reward) ----
-  if (pathname === '/api/spin-confirm' && req.method === 'POST') {
-    let body = '';
-    let size = 0;
-    req.on('data', chunk => {
-      size += chunk.length;
-      if (size > MAX_BODY_SIZE) {
-        res.writeHead(413, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Payload too large' }));
-        req.destroy();
-        return;
-      }
-      body += chunk;
-    });
-    req.on('end', () => {
-      try {
-        const data = JSON.parse(body);
-        if (!data.username || !data.token) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid request' }));
-          return;
-        }
-        
-        const now = Date.now();
-        const token = parseInt(data.token, 10);
-        
-        // Verify token is recent (within 30 seconds)
-        if (now - token > 30000) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Token expired' }));
-          return;
-        }
-        
-        // Set cooldown timestamp
-        users.updateOne(
-          { username: data.username },
-          { $set: { lastSpinTime: token } },
-          { upsert: true }
-        )
-          .then(() => {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true }));
+            res.end(JSON.stringify({ success: true, spinTime: now }));
           })
           .catch(err => {
             console.error('Database error:', err);
