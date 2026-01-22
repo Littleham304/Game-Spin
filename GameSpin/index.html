@@ -262,14 +262,13 @@
       <button class="close-btn" onclick="closeModal()">Close</button>
     </div>
   </div>
-  <script src="games.js"></script>
   <script src="main.js"></script>
   <script>
     // Initialize games once both scripts are loaded
     function initAfterDelay() {
-      if (typeof window.games !== 'undefined' && window.games.length > 0) {
+      if (typeof games !== 'undefined' && games.length > 0) {
         console.log("Games loaded, initializing...");
-        initializeGamesFromGlobal();
+        initializeCanvas();
       } else {
         console.log("Waiting for games to load...");
         setTimeout(initAfterDelay, 100);

@@ -50,8 +50,8 @@ const server = http.createServer((req, res) => {
 
   // Wait for database connection before handling API requests
   if (pathname.startsWith('/api/') && !users) {
-    res.writeHead(503);
-    res.end('Database not ready');
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Database not ready' }));
     return;
   }
 
@@ -64,8 +64,8 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify(user || {}));
       })
       .catch(err => {
-        res.writeHead(500);
-        res.end('Database error');
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Database error' }));
       });
     return;
   }
@@ -78,22 +78,22 @@ const server = http.createServer((req, res) => {
       try {
         const data = JSON.parse(body);
         if (!data.username) {
-          res.writeHead(400);
-          res.end('Missing username');
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing username' }));
           return;
         }
         users.replaceOne({ username: data.username }, data, { upsert: true })
           .then(() => {
-            res.writeHead(200);
-            res.end('Saved');
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, message: 'Saved' }));
           })
           .catch(err => {
-            res.writeHead(500);
-            res.end('Database error');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Database error' }));
           });
       } catch {
-        res.writeHead(400);
-        res.end('Invalid JSON');
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
       }
     });
     return;
@@ -121,8 +121,8 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ canSpin, remainingMs }));
       })
       .catch(err => {
-        res.writeHead(500);
-        res.end('Database error');
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Database error' }));
       });
     return;
   }
@@ -135,8 +135,8 @@ const server = http.createServer((req, res) => {
       try {
         const data = JSON.parse(body);
         if (!data.username) {
-          res.writeHead(400);
-          res.end('Missing username');
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing username' }));
           return;
         }
         
@@ -161,12 +161,12 @@ const server = http.createServer((req, res) => {
             });
           })
           .catch(err => {
-            res.writeHead(500);
-            res.end('Database error');
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Database error' }));
           });
       } catch {
-        res.writeHead(400);
-        res.end('Invalid JSON');
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
       }
     });
     return;
