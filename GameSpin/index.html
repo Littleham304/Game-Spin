@@ -15,7 +15,7 @@
     canvas {
       margin-top: 20px;
       display: block;
-      background: #000;
+      background: transparent;
       width: 100%;
       height: auto;
     }
@@ -84,7 +84,9 @@
     }
     .canvas-section {
       flex-shrink: 0;
-      padding: 0 10px;
+      padding: 20px 10px;
+      background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+      border-bottom: 2px solid #60a5fa;
     }
     .controls {
       flex-shrink: 0;
@@ -108,13 +110,23 @@
       flex: 1;
       min-height: 48px;
     }
-    .color-picker {
-      width: 48px;
-      height: 48px;
-      border: 2px solid #60a5fa;
+    .color-btn {
+      background: #60a5fa;
+      color: #fff;
+      border: none;
+      padding: 12px 16px;
       border-radius: 5px;
       cursor: pointer;
-      background: #facc15;
+      font-size: clamp(14px, 3vw, 16px);
+      font-weight: bold;
+      min-height: 48px;
+      white-space: nowrap;
+    }
+    .color-btn:hover {
+      background: #3b82f6;
+    }
+    .color-picker {
+      display: none;
     }
     .spin-btn:hover:not(:disabled) {
       background: #f59e0b;
@@ -259,6 +271,7 @@
     </div>
     <div class="controls">
       <button class="spin-btn" id="spinBtn" onclick="handleSpin()" disabled>SPIN</button>
+      <button class="color-btn" onclick="document.getElementById('colorPicker').click()">🎨</button>
       <input type="color" class="color-picker" id="colorPicker" value="#facc15" onchange="updateButtonColor()">
     </div>
     <div class="inventory-section">

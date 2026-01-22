@@ -381,8 +381,8 @@ const RARITY_COLORS = {
 };
 
 function draw() {
-  // Fill background
-  ctx.fillStyle = "#000";
+  // Fill background with transparent/gradient-friendly color
+  ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
   ctx.fillRect(0, 0, c.width, c.height);
 
   const itemWidth = ITEM_WIDTH();
