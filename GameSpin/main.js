@@ -72,8 +72,29 @@ async function loadUserData() {
     await checkSpinCooldown();
   } catch (err) {
     console.error('Failed to load user data:', err);
-    alert('Error loading your inventory: ' + err.message);
+    // Always check localStorage on load
+    checkLocalStorageCooldown();
   }
+}
+
+function checkLocalStorageCooldown() {
+  const lastSpin = localStorage.getItem(`lastSpin_${currentUsername}`);
+  console.log('Checking localStorage for:', `lastSpin_${currentUsername}`, 'Value:', lastSpin);
+  
+  if (lastSpin) {
+    const elapsed = Date.now() - parseInt(lastSpin);
+    console.log('Time elapsed since last spin:', elapsed, 'Cooldown:', SPIN_COOLDOWN);
+    
+    if (elapsed < SPIN_COOLDOWN) {
+      const remaining = SPIN_COOLDOWN - elapsed;
+      console.log('Still in cooldown, remaining:', remaining);
+      startCooldownTimer(remaining);
+      return;
+    }
+  }
+  
+  document.getElementById('spinBtn').disabled = false;
+  document.getElementById('spinBtn').textContent = 'SPIN';
 }
 
 async function checkSpinCooldown() {
