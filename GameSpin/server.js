@@ -159,6 +159,7 @@ const server = http.createServer((req, res) => {
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ success: true }));
             });
+          })
           .catch(err => {
             res.writeHead(500);
             res.end('Database error');
