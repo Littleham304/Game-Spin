@@ -68,11 +68,11 @@ async function loadUserData() {
     wonGames = data.wonGames || [];
     populateInventory();
     
-    // Check spin cooldown from server
+    // ALWAYS check spin cooldown from server on load
     await checkSpinCooldown();
   } catch (err) {
     console.error('Failed to load user data:', err);
-    // Always check localStorage on load
+    // Fallback to localStorage if server fails
     checkLocalStorageCooldown();
   }
 }
