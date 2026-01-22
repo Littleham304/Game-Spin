@@ -312,9 +312,13 @@ async function recordSpinOnServer() {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    // Store spin time locally as backup
-    localStorage.setItem(`lastSpin_${currentUsername}`, Date.now().toString());
-    console.log('Server recorded spin, also stored locally:', Date.now());
+    // Store spin time locally as backup and start immediate client-side cooldown
+    const now = Date.now();
+    localStorage.setItem(`lastSpin_${currentUsername}`, now.toString());
+    console.log('Server recorded spin, also stored locally:', now);
+    // Start a full 10-minute timer immediately; this will be refined
+    // by checkSpinCooldown() when it runs after the animation completes
+    startCooldownTimer(SPIN_COOLDOWN);
     return true;
   } catch (err) {
     console.error('Server spin validation failed, using local storage');
