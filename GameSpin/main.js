@@ -79,6 +79,22 @@ async function loadUserData() {
 async function checkSpinCooldown() {
   try {
     const response = await fetch(`/api/spin-check?username=${encodeURIComponent(currentUsername)}`);
+    
+    if (response.status === 503) {
+      // Database not ready, use localStorage fallback
+      const lastSpin = localStorage.getItem(`lastSpin_${currentUsername}`);
+      if (lastSpin) {
+        const elapsed = Date.now() - parseInt(lastSpin);
+        if (elapsed < SPIN_COOLDOWN) {
+          startCooldownTimer(SPIN_COOLDOWN - elapsed);
+          return;
+        }
+      }
+      document.getElementById('spinBtn').disabled = false;
+      document.getElementById('spinBtn').textContent = 'SPIN';
+      return;
+    }
+    
     const data = await response.json();
     
     if (!data.canSpin) {
@@ -89,6 +105,17 @@ async function checkSpinCooldown() {
     }
   } catch (err) {
     console.error('Failed to check spin cooldown:', err);
+    // Fallback to localStorage
+    const lastSpin = localStorage.getItem(`lastSpin_${currentUsername}`);
+    if (lastSpin) {
+      const elapsed = Date.now() - parseInt(lastSpin);
+      if (elapsed < SPIN_COOLDOWN) {
+        startCooldownTimer(SPIN_COOLDOWN - elapsed);
+        return;
+      }
+    }
+    document.getElementById('spinBtn').disabled = false;
+    document.getElementById('spinBtn').textContent = 'SPIN';
   }
 }
 
@@ -232,6 +259,21 @@ async function recordSpinOnServer() {
       body: JSON.stringify({ username: currentUsername })
     });
     
+    if (response.status === 503) {
+      // Database not ready, use localStorage fallback
+      const lastSpin = localStorage.getItem(`lastSpin_${currentUsername}`);
+      if (lastSpin) {
+        const elapsed = Date.now() - parseInt(lastSpin);
+        if (elapsed < SPIN_COOLDOWN) {
+          const minutes = Math.ceil((SPIN_COOLDOWN - elapsed) / 60000);
+          alert(`Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before your next spin!`);
+          return false;
+        }
+      }
+      localStorage.setItem(`lastSpin_${currentUsername}`, Date.now().toString());
+      return true;
+    }
+    
     if (response.status === 429) {
       const data = await response.json();
       const minutes = Math.ceil(data.remainingMs / 60000);
@@ -243,11 +285,25 @@ async function recordSpinOnServer() {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
+    // Store spin time locally as backup
+    localStorage.setItem(`lastSpin_${currentUsername}`, Date.now().toString());
     return true;
   } catch (err) {
-    console.error('Failed to record spin:', err);
-    alert('Error starting spin. Please try again.');
-    return false;
+    console.error('Server spin validation failed, using local storage');
+    
+    // Fallback to localStorage if server fails
+    const lastSpin = localStorage.getItem(`lastSpin_${currentUsername}`);
+    if (lastSpin) {
+      const elapsed = Date.now() - parseInt(lastSpin);
+      if (elapsed < SPIN_COOLDOWN) {
+        const minutes = Math.ceil((SPIN_COOLDOWN - elapsed) / 60000);
+        alert(`Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before your next spin!`);
+        return false;
+      }
+    }
+    
+    localStorage.setItem(`lastSpin_${currentUsername}`, Date.now().toString());
+    return true;
   }
 }
 
