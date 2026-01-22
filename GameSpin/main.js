@@ -397,6 +397,9 @@ function draw() {
         }
         
         showGameModal(winner);
+        
+        // After animation completes, sync UI with server cooldown state
+        checkSpinCooldown();
       }
     }
   }
