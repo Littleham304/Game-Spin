@@ -94,9 +94,9 @@ async function checkSpinCooldown() {
     
     const data = await response.json();
     
-    if (!data.canSpin) {
+    if (!data.canSpin && data.remainingMs > 0) {
       startCooldownTimer(data.remainingMs);
-    } else {
+    } else if (data.canSpin) {
       document.getElementById('spinBtn').disabled = false;
       document.getElementById('spinBtn').textContent = 'SPIN';
     }
