@@ -184,7 +184,7 @@ const server = http.createServer((req, res) => {
             username: data.username,
             $or: [
               { lastSpinTime: { $exists: false } },
-              { lastSpinTime: { $lt: now - cooldown } }
+              { lastSpinTime: { $lte: now - cooldown } }
             ]
           },
           {
@@ -194,7 +194,7 @@ const server = http.createServer((req, res) => {
           { upsert: true, returnDocument: 'after' }
         )
           .then(result => {
-            if (!result) {
+            if (!result || !result.value) {
               res.writeHead(429, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Cooldown active' }));
               return;
