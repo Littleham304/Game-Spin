@@ -102,7 +102,10 @@ const server = http.createServer((req, res) => {
         users.updateOne(
           { username: data.username },
           { 
-            $set: { wonGames: data.wonGames },
+            $set: { 
+              wonGames: data.wonGames,
+              buttonColor: data.buttonColor
+            },
             $setOnInsert: { username: data.username }
           },
           { upsert: true }

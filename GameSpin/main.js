@@ -30,6 +30,7 @@ let spinStartTime = 0;
 let stopStartTime = 0;
 let lastFrameTime = 0;
 let currentUsername = "";
+let buttonColor = "#facc15";
 let decelerationStartPos = 0;
 let lastTickedIndex = -1; // Track which item we last played a tick for
 const SPIN_COOLDOWN = 10 * 60 * 1000; // 10 minutes in milliseconds
@@ -68,6 +69,8 @@ async function loadUserData() {
     const data = await response.json();
     console.log("Loaded user data:", data);
     wonGames = data.wonGames || [];
+    buttonColor = data.buttonColor || "#facc15";
+    applyButtonColor();
     populateInventory();
 
     // ALWAYS check spin cooldown from server on load
@@ -118,7 +121,7 @@ async function saveUserData() {
   if (!currentUsername) return;
 
   try {
-    const userData = { username: currentUsername, wonGames };
+    const userData = { username: currentUsername, wonGames, buttonColor };
     console.log("Saving user data:", userData);
 
     const response = await fetch("/api/user", {
@@ -657,4 +660,18 @@ function startCooldownTimer(remainingMs = SPIN_COOLDOWN) {
   };
 
   updateTimer();
+}
+
+function updateButtonColor() {
+  const picker = document.getElementById("colorPicker");
+  buttonColor = picker.value;
+  applyButtonColor();
+  saveUserData();
+}
+
+function applyButtonColor() {
+  const btn = document.getElementById("spinBtn");
+  const picker = document.getElementById("colorPicker");
+  btn.style.background = buttonColor;
+  picker.value = buttonColor;
 }
