@@ -19,8 +19,10 @@ const ITEM_HEIGHT = 100;
 const CENTER_X = () => c.width / 2 - ITEM_WIDTH() / 2;
 
 let pos = 0;
+// NOTE: speed now represents px/second (time-based), not px/frame
 let speed = 0;
-let maxSpeed = 12; // pixels per frame at full speed
+
+let maxSpeed = 12; // legacy; kept to avoid breaking external assumptions (not used directly now)
 let stopping = false;
 let done = true;
 let wonGames = [];
@@ -191,28 +193,32 @@ async function startSpin() {
   
   console.log("=== SPIN STARTED ===");
     
-    // pick winner
-    const winner = games[Math.floor(Math.random() * games.length)];
+  // pick winner
+  const winner = games[Math.floor(Math.random() * games.length)];
 
-    // build reel with 50 items
-    reelItems = [];
-    for (let i = 0; i < 50; i++) {
-      reelItems.push(games[Math.floor(Math.random() * games.length)]);
-    }
+  // build reel with 50 items
+  reelItems = [];
+  for (let i = 0; i < 50; i++) {
+    reelItems.push(games[Math.floor(Math.random() * games.length)]);
+  }
 
-    // Place winner at index 25 (middle)
-    spinTargetIndex = 25;
-    reelItems[spinTargetIndex] = winner;
+  // Place winner at index 25 (middle)
+  spinTargetIndex = 25;
+  reelItems[spinTargetIndex] = winner;
 
   done = false;
   pos = 0;
   stopping = false;
+
+  // speed is time-based now (px/second). Seed with a small value; ramp handled in draw().
   speed = 0;
+
   targetPos = spinTargetIndex * ITEM_WIDTH() - CENTER_X();
   spinStartTime = Date.now();
   
   document.getElementById('spinBtn').disabled = true;
-  
+
+  // keep the same event/timing semantics: after 3.5s we enter "stopping"/deceleration
   setTimeout(() => {
     stopping = true;
     stopStartTime = Date.now();
@@ -220,6 +226,8 @@ async function startSpin() {
   }, 3500);
   
   preloadImages(reelItems).catch(() => {});
+  // IMPORTANT: reset frame timer so low-FPS / tab-switch doesn't jump on first frame
+  lastFrameTime = performance.now();
   requestAnimationFrame(draw);
 }
 
@@ -288,12 +296,29 @@ function preloadImages(items) {
 let targetPos = 0;
 let spinTargetIndex = 0;
 
+/**
+ * CS:GO-like spin profile constants (time-based, stable at low FPS)
+ * - Fast ramp-up, then a long, weighted deceleration tail
+ * - Exact landing (no bounce), no frame-dependent stepping
+ */
+const SPIN_ACCEL_MS = 550;          // quick ramp (mechanical punch)
+const SPIN_CRUISE_MS = 2950;        // stays fast before "stop" is triggered (~3.5s total with accel)
+const SPIN_DECEL_MS = 2200;         // long deceleration tail (perceived smoothness)
+const MAX_SPEED_PX_PER_SEC = 2400;  // peak reel speed
+const START_JITTER_PX = 0.9;        // optional micro-randomness only at the start (sub-pixel)
+const DT_CLAMP_SEC = 0.05;          // clamp to avoid huge jumps on tab-switch / low FPS
+
 function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3);
 }
 
 function easeInCubic(t) {
   return t * t * t;
+}
+
+// Stronger tail than cubic (more CS:GO-ish weight). Used for decel only.
+function easeOutQuint(t) {
+  return 1 - Math.pow(1 - t, 5);
 }
 
 function roundRect(ctx, x, y, width, height, radius) {
@@ -356,58 +381,76 @@ function draw() {
   ctx.stroke();
 
   if (!done) {
+    const nowPerf = performance.now();
+    const dtSecRaw = (nowPerf - (lastFrameTime || nowPerf)) / 1000;
+    // Clamp dt so very low FPS doesn't skip ticks/teleport.
+    const dtSec = Math.min(Math.max(dtSecRaw, 0), DT_CLAMP_SEC);
+    lastFrameTime = nowPerf;
+
     const now = Date.now();
     const elapsed = now - spinStartTime;
-    
+
     if (!stopping) {
-      // ACCELERATION + SPINNING PHASE (3.5 seconds total)
-      const accelDuration = 500; // First 0.5s is acceleration
-      
-      if (elapsed < accelDuration) {
-        // Acceleration phase - smooth ramp up
-        const accelProgress = elapsed / accelDuration;
-        speed = maxSpeed * easeInCubic(accelProgress);
-      } else {
-        // Full speed spinning phase
-        speed = maxSpeed;
-      }
-      
-      pos += speed;
-      
-      // Play tick sound as we pass each item
+      // MOMENTUM PHASE (accelerate quickly then cruise).
+      // This replaces "pos += speed (per frame)" with time-based integration.
+      const accelProgress = Math.min(elapsed / SPIN_ACCEL_MS, 1);
+
+      // Fast initial movement (ease-in gives a mechanical "grab" rather than floaty)
+      const v = MAX_SPEED_PX_PER_SEC * easeInCubic(accelProgress);
+
+      // Optional micro-randomness ONLY at start (kept tiny to avoid jitter later)
+      const startJitter = (elapsed < 120) ? ((Math.random() - 0.5) * START_JITTER_PX) : 0;
+
+      speed = v;
+      pos += (speed * dtSec) + startJitter;
+
+      // Tick sound on each item boundary crossed (stable even when dt is bigger)
       const currentIndex = Math.floor(pos / itemWidth);
       if (currentIndex !== lastTickedIndex) {
         lastTickedIndex = currentIndex;
         playTickSound();
       }
     } else {
-      // DECELERATION PHASE (1.5 seconds)
+      // DECELERATION PHASE (long smooth ease-out, exact stop at targetPos).
+      // We interpolate position from decelerationStartPos -> targetPos using time,
+      // so landing is deterministic and frame rate independent.
       const elapsed2 = now - stopStartTime;
-      const duration = 1500; // 1.5 second deceleration
-      const progress = Math.min(elapsed2 / duration, 1);
-      
-      // Smooth easing from current position to target
-      const eased = easeOutCubic(progress);
+      const progress = Math.min(elapsed2 / SPIN_DECEL_MS, 1);
+
+      // Strong ease-out tail (quint) for CS:GO-like long slow-down feel.
+      const eased = easeOutQuint(progress);
+
+      const prevPos = pos;
       pos = decelerationStartPos + (targetPos - decelerationStartPos) * eased;
-      
+
+      // Derive speed (px/sec) for any future use/debug; avoids frame-dependence.
+      speed = dtSec > 0 ? (pos - prevPos) / dtSec : 0;
+
+      // Continue ticking during decel; we may cross multiple items at low FPS.
+      const currentIndex = Math.floor(pos / itemWidth);
+      if (currentIndex !== lastTickedIndex) {
+        lastTickedIndex = currentIndex;
+        playTickSound();
+      }
+
       if (progress >= 1) {
-        // DONE - snap to exact target
+        // DONE - clean exact landing, no bounce, no snapping after this point
         pos = targetPos;
         done = true;
-        
+
         const winner = reelItems[spinTargetIndex];
         console.log("=== SPIN COMPLETE ===");
         console.log("WINNER:", winner.title);
-        
+
         // Play success sound
         playWinSound();
-        
+
         if (!wonGames.find(g => g.id === winner.id)) {
           wonGames.push(winner);
           populateInventory();
           saveUserData();
         }
-        
+
         showGameModal(winner);
       }
     }
