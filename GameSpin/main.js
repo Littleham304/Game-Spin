@@ -366,6 +366,17 @@ function roundRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+// Rarity color mapping
+const RARITY_COLORS = {
+  common: "#9ca3af",      // Gray
+  uncommon: "#22c55e",   // Green
+  rare: "#3b82f6",       // Blue
+  epic: "#a855f7",       // Purple
+  legendary: "#eab308",  // Gold
+  mythic: "#ef4444",     // Red
+  exotic: "#ec4899"      // Pink
+};
+
 function draw() {
   // Fill background
   ctx.fillStyle = "#000";
@@ -397,8 +408,9 @@ function draw() {
     }
     ctx.restore();
 
-    // border with rounded corners
-    ctx.strokeStyle = "#fff";
+    // border with rounded corners - color based on rarity
+    const rarity = item.rarity ? item.rarity.toLowerCase() : "common";
+    ctx.strokeStyle = RARITY_COLORS[rarity] || "#fff";
     ctx.lineWidth = 2;
     roundRect(ctx, x, 20, cardWidth, cardHeight, radius);
     ctx.stroke();
