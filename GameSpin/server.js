@@ -99,7 +99,14 @@ const server = http.createServer((req, res) => {
           res.end(JSON.stringify({ error: 'Invalid username' }));
           return;
         }
-        users.replaceOne({ username: data.username }, data, { upsert: true })
+        users.updateOne(
+          { username: data.username },
+          { 
+            $set: { wonGames: data.wonGames },
+            $setOnInsert: { username: data.username }
+          },
+          { upsert: true }
+        )
           .then(() => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: true, message: 'Saved' }));
