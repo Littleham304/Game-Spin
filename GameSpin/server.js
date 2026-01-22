@@ -155,12 +155,10 @@ const server = http.createServer((req, res) => {
               { username: data.username },
               { $set: { lastSpinTime: now } },
               { upsert: true }
-            );
-          })
-          .then(() => {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true }));
-          })
+            ).then(() => {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true }));
+            });
           .catch(err => {
             res.writeHead(500);
             res.end('Database error');
