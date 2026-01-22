@@ -84,19 +84,24 @@ function checkLocalStorageCooldown() {
 
 async function checkSpinCooldown() {
   try {
+    console.log('Checking spin cooldown for:', currentUsername);
     const response = await fetch(`/api/spin-check?username=${encodeURIComponent(currentUsername)}`);
     
     if (response.status === 503) {
+      console.log('Database not ready, enabling button');
       document.getElementById('spinBtn').disabled = false;
       document.getElementById('spinBtn').textContent = 'SPIN';
       return;
     }
     
     const data = await response.json();
+    console.log('Spin check response:', data);
     
     if (!data.canSpin && data.remainingMs > 0) {
+      console.log('Starting cooldown timer with', data.remainingMs, 'ms');
       startCooldownTimer(data.remainingMs);
     } else if (data.canSpin) {
+      console.log('Can spin, enabling button');
       document.getElementById('spinBtn').disabled = false;
       document.getElementById('spinBtn').textContent = 'SPIN';
     }
@@ -220,11 +225,14 @@ async function startSpin() {
 
 async function recordSpinOnServer() {
   try {
+    console.log('Recording spin on server for:', currentUsername);
     const response = await fetch('/api/spin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: currentUsername })
     });
+    
+    console.log('Spin response status:', response.status);
     
     if (response.status === 429) {
       alert('Please wait before your next spin!');
@@ -237,6 +245,8 @@ async function recordSpinOnServer() {
       return false;
     }
     
+    const result = await response.json();
+    console.log('Spin accepted, starting timer');
     // Server confirmed spin - start cooldown timer immediately
     startCooldownTimer(SPIN_COOLDOWN);
     return true;
@@ -534,6 +544,7 @@ function playTickSound() {
 }
 
 function startCooldownTimer(remainingMs = SPIN_COOLDOWN) {
+  console.log('startCooldownTimer called with', remainingMs, 'ms');
   const btn = document.getElementById('spinBtn');
   const endTime = Date.now() + remainingMs;
   
@@ -542,6 +553,7 @@ function startCooldownTimer(remainingMs = SPIN_COOLDOWN) {
     const remaining = endTime - now;
     
     if (remaining <= 0) {
+      console.log('Cooldown expired, checking server');
       // Cooldown expired - verify with server before enabling
       checkSpinCooldown();
       return;

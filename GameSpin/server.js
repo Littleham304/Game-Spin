@@ -194,11 +194,13 @@ const server = http.createServer((req, res) => {
           { upsert: true, returnDocument: 'after' }
         )
           .then(result => {
-            if (!result) {
+            console.log('findOneAndUpdate result:', result);
+            if (!result || !result.value) {
               res.writeHead(429, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Cooldown active' }));
               return;
             }
+            console.log('Spin accepted for', data.username, 'at', now);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: true, spinTime: now }));
           })
