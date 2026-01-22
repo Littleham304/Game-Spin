@@ -194,7 +194,7 @@ const server = http.createServer((req, res) => {
           { upsert: true, returnDocument: 'after' }
         )
           .then(result => {
-            if (!result || !result.value) {
+            if (!result) {
               res.writeHead(429, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Cooldown active' }));
               return;
