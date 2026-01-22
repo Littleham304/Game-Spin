@@ -615,8 +615,8 @@ function startCooldownTimer(remainingMs = SPIN_COOLDOWN) {
     const remaining = endTime - now;
     
     if (remaining <= 0) {
-      btn.disabled = false;
-      btn.textContent = 'SPIN';
+      // Cooldown expired - verify with server before enabling
+      checkSpinCooldown();
       return;
     }
     

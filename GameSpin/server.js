@@ -184,32 +184,28 @@ const server = http.createServer((req, res) => {
             username: data.username,
             $or: [
               { lastSpinTime: { $exists: false } },
-              { lastSpinTime: { $lt: now - cooldown } }
+              { lastSpinTime: { $lte: now - cooldown } }
             ]
           },
-          { $set: { lastSpinTime: now } },
+          { 
+            $set: { lastSpinTime: now },
+            $setOnInsert: { username: data.username }
+          },
           { upsert: true, returnDocument: 'after' }
         )
           .then(result => {
-            if (!result.value && result.lastErrorObject && !result.lastErrorObject.updatedExisting) {
-              // Document was created (first spin) - allow
+            if (result.value) {
+              // Success - document matched and updated, or created
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ success: true, timestamp: now }));
-              return;
-            }
-            
-            if (!result.value) {
-              // Update failed - cooldown active
+            } else {
+              // No match - cooldown active
               return users.findOne({ username: data.username }).then(user => {
                 const remaining = user && user.lastSpinTime ? cooldown - (now - user.lastSpinTime) : 0;
                 res.writeHead(429, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Cooldown active', remainingMs: Math.max(0, remaining) }));
               });
             }
-            
-            // Success
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true, timestamp: now }));
           })
           .catch(err => {
             console.error('Database error:', err);
