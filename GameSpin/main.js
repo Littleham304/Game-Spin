@@ -220,10 +220,13 @@ function startSpin() {
   }
   
   // Record spin on server first
-  recordSpinOnServer().then(canSpin => {
-    if (!canSpin) return; // Server rejected the spin
+  recordSpinOnServer().then(result => {
+    if (!result || !result.success) return; // Server rejected the spin
     
     console.log("=== SPIN STARTED ===");
+    
+    // Store the timestamp for later (after animation completes)
+    const spinTimestamp = result.timestamp;
     
     // pick winner
     const winner = games[Math.floor(Math.random() * games.length)];
@@ -243,6 +246,9 @@ function startSpin() {
     pos = 0;
     stopping = false;
     speed = 0;
+    
+    // Store timestamp for use after animation
+    window.pendingSpinTimestamp = spinTimestamp;
     
     // Target position: where index 25 should be centered
     targetPos = spinTargetIndex * ITEM_WIDTH() - CENTER_X();
@@ -301,11 +307,8 @@ async function recordSpinOnServer() {
     }
     
     const result = await response.json();
-    const now = result.timestamp || Date.now();
-    localStorage.setItem(`lastSpin_${currentUsername}`, now.toString());
-    console.log('Server recorded spin, timestamp:', now);
-    startCooldownTimer(SPIN_COOLDOWN);
-    return true;
+    // Store timestamp but DON'T start timer yet - wait for animation to complete
+    return { success: true, timestamp: result.timestamp || Date.now() };
   } catch (err) {
     console.error('Server spin validation failed:', err);
     alert('Cannot connect to server. Please check your connection.');
@@ -466,12 +469,19 @@ function draw() {
         
         showGameModal(winner);
 
-        // After spin completes, re-sync cooldown from server/localStorage
-        // instead of blindly starting a fresh 10-minute timer.
-        const btn = document.getElementById('spinBtn');
-        btn.disabled = true;
-        btn.textContent = 'Checking...';
-        checkSpinCooldown();
+        // NOW set cooldown after reward is granted
+        if (window.pendingSpinTimestamp) {
+          localStorage.setItem(`lastSpin_${currentUsername}`, window.pendingSpinTimestamp.toString());
+          console.log('Cooldown set after reward, timestamp:', window.pendingSpinTimestamp);
+          delete window.pendingSpinTimestamp;
+          startCooldownTimer(SPIN_COOLDOWN);
+        } else {
+          // Fallback: check server state
+          const btn = document.getElementById('spinBtn');
+          btn.disabled = true;
+          btn.textContent = 'Checking...';
+          checkSpinCooldown();
+        }
       }
     }
   }
