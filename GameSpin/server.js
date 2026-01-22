@@ -6,6 +6,7 @@ const { MongoClient } = require('mongodb');
 
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/gamespin';
+const MAX_BODY_SIZE = 1048576; // 1MB limit
 
 let db;
 let users;
@@ -58,12 +59,18 @@ const server = http.createServer((req, res) => {
   // ---- API: Get user ----
   if (pathname === '/api/user' && req.method === 'GET') {
     const username = parsedUrl.query.username;
+    if (!username || typeof username !== 'string' || username.length > 50) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid username' }));
+      return;
+    }
     users.findOne({ username })
       .then(user => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(user || {}));
       })
       .catch(err => {
+        console.error('Database error:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Database error' }));
       });
@@ -73,13 +80,23 @@ const server = http.createServer((req, res) => {
   // ---- API: Save user ----
   if (pathname === '/api/user' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    });
     req.on('end', () => {
       try {
         const data = JSON.parse(body);
-        if (!data.username) {
+        if (!data.username || typeof data.username !== 'string' || data.username.length > 50) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Missing username' }));
+          res.end(JSON.stringify({ error: 'Invalid username' }));
           return;
         }
         users.replaceOne({ username: data.username }, data, { upsert: true })
@@ -88,10 +105,12 @@ const server = http.createServer((req, res) => {
             res.end(JSON.stringify({ success: true, message: 'Saved' }));
           })
           .catch(err => {
+            console.error('Database error:', err);
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Database error' }));
           });
-      } catch {
+      } catch (err) {
+        console.error('JSON parse error:', err);
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON' }));
       }
@@ -102,6 +121,11 @@ const server = http.createServer((req, res) => {
   // ---- API: Check spin cooldown ----
   if (pathname === '/api/spin-check' && req.method === 'GET') {
     const username = parsedUrl.query.username;
+    if (!username || typeof username !== 'string' || username.length > 50) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid username' }));
+      return;
+    }
     users.findOne({ username })
       .then(user => {
         const now = Date.now();
@@ -121,6 +145,7 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ canSpin, remainingMs }));
       })
       .catch(err => {
+        console.error('Database error:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Database error' }));
       });
@@ -130,41 +155,69 @@ const server = http.createServer((req, res) => {
   // ---- API: Record spin ----
   if (pathname === '/api/spin' && req.method === 'POST') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    let size = 0;
+    req.on('data', chunk => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    });
     req.on('end', () => {
       try {
         const data = JSON.parse(body);
-        if (!data.username) {
+        if (!data.username || typeof data.username !== 'string' || data.username.length > 50) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Missing username' }));
+          res.end(JSON.stringify({ error: 'Invalid username' }));
           return;
         }
         
-        users.findOne({ username: data.username })
-          .then(user => {
-            const now = Date.now();
-            const cooldown = 10 * 60 * 1000;
-            
-            if (user && user.lastSpinTime && (now - user.lastSpinTime) < cooldown) {
-              res.writeHead(429, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Cooldown active', remainingMs: cooldown - (now - user.lastSpinTime) }));
+        const now = Date.now();
+        const cooldown = 10 * 60 * 1000;
+        
+        // ATOMIC: Check cooldown AND set timestamp in single operation
+        users.findOneAndUpdate(
+          { 
+            username: data.username,
+            $or: [
+              { lastSpinTime: { $exists: false } },
+              { lastSpinTime: { $lt: now - cooldown } }
+            ]
+          },
+          { $set: { lastSpinTime: now } },
+          { upsert: true, returnDocument: 'after' }
+        )
+          .then(result => {
+            if (!result.value && result.lastErrorObject && !result.lastErrorObject.updatedExisting) {
+              // Document was created (first spin) - allow
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true, timestamp: now }));
               return;
             }
             
-            return users.updateOne(
-              { username: data.username },
-              { $set: { lastSpinTime: now } },
-              { upsert: true }
-            ).then(() => {
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ success: true }));
-            });
+            if (!result.value) {
+              // Update failed - cooldown active
+              return users.findOne({ username: data.username }).then(user => {
+                const remaining = user && user.lastSpinTime ? cooldown - (now - user.lastSpinTime) : 0;
+                res.writeHead(429, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Cooldown active', remainingMs: Math.max(0, remaining) }));
+              });
+            }
+            
+            // Success
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, timestamp: now }));
           })
           .catch(err => {
+            console.error('Database error:', err);
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Database error' }));
           });
-      } catch {
+      } catch (err) {
+        console.error('JSON parse error:', err);
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON' }));
       }
@@ -173,7 +226,16 @@ const server = http.createServer((req, res) => {
   }
 
   // ---- Static files ----
-  let filePath = path.join(__dirname, pathname === '/' ? 'index.html' : pathname);
+  const safePath = pathname === '/' ? 'index.html' : pathname;
+  const filePath = path.join(__dirname, safePath);
+  
+  // Prevent directory traversal
+  if (!filePath.startsWith(__dirname)) {
+    res.writeHead(403);
+    res.end('403 Forbidden');
+    return;
+  }
+  
   const ext = path.extname(filePath);
 
   fs.readFile(filePath, (err, data) => {

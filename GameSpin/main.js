@@ -38,20 +38,18 @@ async function setUsername() {
   const input = document.getElementById('usernameInput');
   const username = input.value.trim();
   
-  if (!username) {
-    alert('Please enter a username');
+  if (!username || username.length > 50) {
+    alert('Please enter a valid username (max 50 characters)');
     return;
   }
 
   currentUsername = username;
   document.getElementById('usernamePrompt').classList.add('hidden');
 
-  // Disable while we verify cooldown from server/localStorage
   const spinBtn = document.getElementById('spinBtn');
   spinBtn.disabled = true;
   spinBtn.textContent = 'Checking...';
 
-  // Load user data and check cooldown (this will set the proper button state)
   await loadUserData();
 }
 
@@ -84,7 +82,7 @@ function checkLocalStorageCooldown() {
   console.log('Checking localStorage for:', `lastSpin_${currentUsername}`, 'Value:', lastSpin);
   
   if (lastSpin) {
-    const elapsed = Date.now() - parseInt(lastSpin);
+    const elapsed = Date.now() - parseInt(lastSpin, 10);
     console.log('Time elapsed since last spin:', elapsed, 'Cooldown:', SPIN_COOLDOWN);
     
     if (elapsed < SPIN_COOLDOWN) {
@@ -228,12 +226,12 @@ function startSpin() {
     console.log("=== SPIN STARTED ===");
     
     // pick winner
-    const winner = games[Math.random() * games.length | 0];
+    const winner = games[Math.floor(Math.random() * games.length)];
 
     // build reel with 50 items
     reelItems = [];
     for (let i = 0; i < 50; i++) {
-      reelItems.push(games[Math.random() * games.length | 0]);
+      reelItems.push(games[Math.floor(Math.random() * games.length)]);
     }
 
     // Place winner at index 25 (middle)
@@ -286,21 +284,6 @@ async function recordSpinOnServer() {
       body: JSON.stringify({ username: currentUsername })
     });
     
-    if (response.status === 503) {
-      // Database not ready, use localStorage fallback
-      const lastSpin = localStorage.getItem(`lastSpin_${currentUsername}`);
-      if (lastSpin) {
-        const elapsed = Date.now() - parseInt(lastSpin);
-        if (elapsed < SPIN_COOLDOWN) {
-          const minutes = Math.ceil((SPIN_COOLDOWN - elapsed) / 60000);
-          alert(`Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before your next spin!`);
-          return false;
-        }
-      }
-      localStorage.setItem(`lastSpin_${currentUsername}`, Date.now().toString());
-      return true;
-    }
-    
     if (response.status === 429) {
       const data = await response.json();
       const minutes = Math.ceil(data.remainingMs / 60000);
@@ -308,34 +291,25 @@ async function recordSpinOnServer() {
       return false;
     }
     
+    if (response.status === 503 || response.status === 500) {
+      alert('Server error. Please try again later.');
+      return false;
+    }
+    
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     
-    // Store spin time locally as backup and start immediate client-side cooldown
-    const now = Date.now();
+    const result = await response.json();
+    const now = result.timestamp || Date.now();
     localStorage.setItem(`lastSpin_${currentUsername}`, now.toString());
-    console.log('Server recorded spin, also stored locally:', now);
-    // Start a full 10-minute timer immediately; this will be refined
-    // by checkSpinCooldown() when it runs after the animation completes
+    console.log('Server recorded spin, timestamp:', now);
     startCooldownTimer(SPIN_COOLDOWN);
     return true;
   } catch (err) {
-    console.error('Server spin validation failed, using local storage');
-    
-    // Fallback to localStorage if server fails
-    const lastSpin = localStorage.getItem(`lastSpin_${currentUsername}`);
-    if (lastSpin) {
-      const elapsed = Date.now() - parseInt(lastSpin);
-      if (elapsed < SPIN_COOLDOWN) {
-        const minutes = Math.ceil((SPIN_COOLDOWN - elapsed) / 60000);
-        alert(`Please wait ${minutes} minute${minutes > 1 ? 's' : ''} before your next spin!`);
-        return false;
-      }
-    }
-    
-    localStorage.setItem(`lastSpin_${currentUsername}`, Date.now().toString());
-    return true;
+    console.error('Server spin validation failed:', err);
+    alert('Cannot connect to server. Please check your connection.');
+    return false;
   }
 }
 
